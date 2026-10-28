@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { background: #0d0d0d; color: #fff; padding: 1rem; }
+    h1 { font-size: 20px; margin-bottom: 1rem; }
+    .nav { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+    .nav button, .league-tabs button { padding: 6px 14px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #aaa; cursor: pointer; font-size: 13px; }
+    .nav button.active, .league-tabs button.active { background: #2a2a2a; color: #fff; border-color: #555; }
+    .league-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; margin-bottom: 1rem; }
+    .card-header { padding: 12px 16px; border-bottom: 1px solid #2a2a2a; font-size: 15px; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { padding: 8px 16px; color: #666; font-weight: 400; border-bottom: 1px solid #2a2a2a; text-align: left; }
+    td { padding: 10px 16px; border-bottom: 1px solid #1f1f1f; }
+    tr:last-child td { border-bottom: none; }
+    .pts { font-weight: 500; color: #1D9E75; }
+    .pos { color: #555; }
+    .loading { padding: 2rem; text-align: center; color: #555; }
+    .error { padding: 1rem; color: #e24b4a; }
+  </style>
+</head>
+<body>
+  <h1>⚽ Football App</h1>
+
+  <div class="nav">
+    <button class="active" onclick="switchSection('standings')">Standings</button>
+    <button onclick="switchSection('scorers')">Top Scorers</button>
+    <button onclick="switchSection('fixtures')">Fixtures</button>
+  </div>
+
+  <div class="league-tabs" id="league-tabs"></div>
+  <div id="content"></div>
+
+  <script>
+    const BASE = "/api/football";
+    const TOP_N = 4;
+    const leagues = [
+      { name: "Premier League", code: "PL", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
+      { name: "La Liga", code: "PD", flag: "🇪🇸" },
+      { name: "Bundesliga", code: "BL1", flag: "🇩🇪" },
+      { name: "Serie A", code: "SA", flag: "🇮🇹" },
+      { name: "Ligue 1", code: "FL1", flag: "🇫🇷" },
+      { name: "Eredivisie", code: "DED", flag: "🇳🇱" },
+      { name: "Primeira Liga", code: "PPL", flag: "🇵🇹" },
+      { name: "Championship", code: "ELC", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
+      { name: "Brazilian Serie A", code: "BSA", flag: "🇧🇷" },
+    ];
+
+    let currentLeague = leagues[0];
+    let currentSection = "standings";
+    const cache = {};
+
+    const tabs = document.getElementById("league-tabs");
+    leagues.forEach(l => {
+      const btn = document.createElement("button");
+      btn.textContent = l.flag + " " + l.name;
+      btn.dataset.code = l.code;
+      if (l.code === currentLeague.code) btn.classList.add("active");
+      btn.onclick = () => {
+        currentLeague = l;
+        document.querySelectorAll(".league-tabs button").forEach(b => b.classList.toggle("active", b.dataset.code === l.code));
+        loadData();
+      };
+      tabs.appendChild(btn);
+    });
+
+    function switchSection(sec) {
+      currentSection = sec;
+      document.querySelectorAll(".nav button").forEach((b, i) => {
+        b.classList.toggle("active", ["standings","scorers","fixtures"][i] === sec);
+      });
+      loadData();
+    }
+
+    async function fetchData(league, type) {
+      const key = league + type;
+      if (cache[key]) return cache[key];
+      const res = await fetch(`${BASE}?league=${league}&type=${type}`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      cache[key] = data;
+      return data;
+    }
+
+    async function loadData() {
+      const content = document.getElementById("content");
+      content.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        if (currentSection === "standings") {
+          const data = await fetchData(currentLeague.code, "standings");
+          const table = data.standings[0].table.slice(0, TOP_N);
+          let html = `<div class="card"><div class="card-header">${currentLeague.flag} ${currentLeague.name} — Top ${TOP_N}</div>
+          <table><thead><tr><th>#</th><th>Team</th><th>Pts</th><th>Pld</th><th>W</th><th>GD</th></tr></thead><tbody>`;
+          table.forEach(t => {
+            const gd = t.goalDifference;
+            html += `<tr><td class="pos">${t.position}</td><td>${t.team.name}</td><td class="pts">${t.points}</td><td>${t.playedGames}</td><td>${t.won}</td><td>${gd > 0 ? '+' + gd : gd}</td></tr>`;
+          });
+          html += "</tbody></table></div>";
+          content.innerHTML = html;
+
+        } else if (currentSection === "scorers") {
+          const data = await fetchData(currentLeague.code, "scorers?limit=4");
+          const scorers = data.scorers.slice(0, TOP_N);
+          let html = `<div class="card"><div class="card-header">${currentLeague.flag} Top Scorers — ${currentLeague.name}</div>
+          <table><thead><tr><th>#</th><th>Player</th><th>Team</th><th>Goals</th><th>Assists</th></tr></thead><tbody>`;
+          scorers.forEach((s, i) => {
+            html += `<tr><td class="pos">${i+1}</td><td>${s.player.name}</td><td style="color:#555;font-size:12px">${s.team.name}</td><td class="pts">${s.goals ?? "-"}</td><td style="color:#aaa">${s.assists ?? "-"}</td></tr>`;
+          });
+          html += "</tbody></table></div>";
+          content.innerHTML = html;
+
+        } else if (currentSection === "fixtures") {
+          const data = await fetchData(currentLeague.code, "matches?status=SCHEDULED&limit=4");
+          const matches = data.matches.slice(0, TOP_N);
+          let html = `<div class="card"><div class="card-header">${currentLeague.flag} Upcoming Fixtures — ${currentLeague.name}</div>
+          <table><thead><tr><th>Date</th><th>Home</th><th></th><th>Away</th></tr></thead><tbody>`;
+          matches.forEach(m => {
+            const d = new Date(m.utcDate);
+            html += `<tr><td style="color:#555;font-size:12px">${d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}<br>${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td><td>${m.homeTeam.name}</td><td style="color:#555">vs</td><td>${m.awayTeam.name}</td></tr>`;
+          });
+          html += "</tbody></table></div>";
+          content.innerHTML = html;
+        }
+      } catch(e) {
+        content.innerHTML = `<div class="card"><div class="error">Could not load data: ${e.message}</div></div>`;
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
